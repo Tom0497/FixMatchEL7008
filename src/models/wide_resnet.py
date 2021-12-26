@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class WideDropoutBlock(nn.Module):
+
     def __init__(self,
                  in_planes: int,
                  out_planes: int,
@@ -66,6 +67,7 @@ class WideDropoutBlock(nn.Module):
 
 
 class WideResNetBlock(nn.Module):
+
     def __init__(self,
                  in_planes: int,
                  out_planes: int,
