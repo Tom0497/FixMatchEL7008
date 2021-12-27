@@ -7,6 +7,8 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, Dataset
 
+from utils import cosine_decay
+
 
 class ModelTrainer(object):
     """
@@ -62,6 +64,10 @@ class ModelTrainer(object):
         self.lossfun = nn.CrossEntropyLoss()
         self.optimizer = self.__resolve_optimizer(optimizer)
 
+        # learning rate schedule (cosine decay)
+        self.lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer=self.optimizer,
+                                                        lr_lambda=cosine_decay(epochs=self.epochs))
+
         # logs for accuracy and loss in training and validation sets
         self.train_loss = []
         self.train_accu = []
@@ -93,76 +99,30 @@ class ModelTrainer(object):
 
         for epoch in range(self.epochs):
             # training stage
-            temp_loss = 0.0
-            predicted, expected = [], []
+            temp_train_loss, train_accuracy = self.__train_epoch()
 
-            # for cycle defines an epoch for train set
-            for inputs, labels in self.train_dl:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
+            # evaluation stage
+            temp_val_loss, val_accuracy, _ = self.evaluate_model(self.model,
+                                                                 self.val_dl,
+                                                                 self.device)
 
-                # set gradient values to zero
-                self.optimizer.zero_grad()
+            # learning rate schedule
+            self.lr_scheduler.step()
 
-                # model forward, loss and gradient computation, weights update
-                outputs = self.model(inputs)
-                loss = self.lossfun(outputs, labels)
-                loss.backward()
-                self.optimizer.step()
-
-                # predictions for accuracy computation
-                predictions = outputs.detach().cpu().numpy().argmax(axis=1)
-                labels = labels.cpu().numpy().argmax(axis=1)
-
-                # both labels and predictions are temporally stored to compute epoch accuracy
-                predicted.extend(predictions)
-                expected.extend(labels)
-
-                # accumulated loss for epoch
-                temp_loss += loss.item()
-
-            # accuracy and loss computation for one epoch of training
-            train_accuracy = accuracy_score(expected, predicted)
-            temp_loss /= len(self.train_dl)
-
-            # log accuracy and loss in training
-            self.train_loss.append(temp_loss)
-            self.train_accu.append(train_accuracy)
-
-            # evaluation stage (no-dropout and BN with current batch only), no gradient computation
-            self.model.eval()
-            with torch.no_grad():
-                # accuracy and loss in validation set
-                temp_val_loss, val_accuracy, _ = self.evaluate_model(self.model,
-                                                                     self.val_dl,
-                                                                     self.device)
-
-                # log of accuracy and loss on validation set
-                self.val_loss.append(temp_val_loss)
-                self.val_accu.append(val_accuracy)
-            # set model to train mode
-            self.model.train()
-
-            print(
-                f'[Epoch {epoch}]'
-                f' train_loss: {temp_loss:.4f} |'
-                f' val_loss: {temp_val_loss:.4f} |'
-                f' val_accu: {val_accuracy:.2f} |'
-                f' train_accu: {train_accuracy:.2f}')
+            # log and display current epoch metrics
+            self.__log_epoch(epoch=epoch,
+                             train_loss=temp_train_loss,
+                             val_loss=temp_val_loss,
+                             train_accuracy=train_accuracy,
+                             val_accuracy=val_accuracy)
 
             # save model with the lowest validation loss
             if self.best_model['val_loss'] > temp_val_loss:
                 best_time = time.time() - init_time
-                self.best_model = {
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    'train_loss': temp_loss,
-                    'val_loss': temp_val_loss,
-                    'train_accu': train_accuracy,
-                    'val_accu': val_accuracy,
-                    'best_time': best_time
-                }
+                self.__save_best(epoch=epoch,
+                                 train_time=best_time)
 
-        # total trainig time
+        # total training time
         training_time = time.time() - init_time
         self.train_time = training_time
         print(f'Training completed -- training time: {training_time:.3f} s')
@@ -173,16 +133,174 @@ class ModelTrainer(object):
             optimizer using string name. Options -> [adam, sgd].
         """
 
-        assert isinstance(optimizer, str) and optimizer in ('adam', 'sgd'), 'only adam or sgd supported'
-        if optimizer == 'adam':
+        assert isinstance(optimizer, str), 'optimizer name must be string'
+        assert optimizer.lower() in ('adam', 'sgd'), 'only ADAM and SGD supported'
+
+        if optimizer.lower() == 'adam':
             return optim.Adam(self.model.parameters(),
                               lr=self.lr,
-                              betas=(0.9, 0.999))
+                              betas=(0.9, 0.999),
+                              weight_decay=0.0005)
+
         return optim.SGD(self.model.parameters(),
                          lr=self.lr,
                          momentum=0.9,
                          nesterov=True,
                          weight_decay=0.0005)
+
+    def __train_epoch(self):
+        """
+        Perform one epoch of training.
+
+        :return:
+            CE-loss and accuracy computed over training dataset.
+        """
+
+        # training stage
+        self.model.train()
+
+        # list to save predicted and expected labels
+        temp_loss = 0.0
+        predicted, expected = [], []
+
+        # for cycle defines an epoch for train set
+        for inputs, labels in self.train_dl:
+            inputs, labels = inputs.to(self.device), labels.to(self.device)
+
+            # set gradient values to zero
+            self.optimizer.zero_grad()
+
+            # model forward, loss and gradient computation, weights update
+            outputs = self.model(inputs)
+            loss = self.lossfun(outputs, labels)
+            loss.backward()
+            self.optimizer.step()
+
+            # predictions for accuracy computation
+            predictions = outputs.detach().cpu().numpy().argmax(axis=1)
+            labels = labels.cpu().numpy().argmax(axis=1)
+
+            # both labels and predictions are temporally stored to compute epoch accuracy
+            predicted.extend(predictions)
+            expected.extend(labels)
+
+            # accumulated loss for epoch
+            temp_loss += loss.item()
+
+        # accuracy and loss computation for one epoch of training
+        train_accuracy = accuracy_score(expected, predicted)
+        temp_loss /= len(self.train_dl)
+
+        return (temp_loss,
+                train_accuracy)
+
+    def __log_epoch(self,
+                    epoch: int,
+                    train_loss: float,
+                    val_loss: float,
+                    train_accuracy: float,
+                    val_accuracy: float):
+        """
+        Log and display important metrics from an epoch.
+
+        :param epoch:
+            training epoch.
+        :param train_loss:
+            CE loss in training set.
+        :param val_loss:
+            CE loss in validation set.
+        :param train_accuracy:
+            accuracy in training set.
+        :param val_accuracy:
+            accuracy in validation set.
+        """
+
+        # log accuracy and loss in training
+        self.train_loss.append(train_loss)
+        self.train_accu.append(train_accuracy)
+
+        # log of accuracy and loss on validation set
+        self.val_loss.append(val_loss)
+        self.val_accu.append(val_accuracy)
+
+        print(
+            f'[Epoch {epoch}]'
+            f' train_loss: {train_loss:.4f} |'
+            f' val_loss: {val_loss:.4f} |'
+            f' val_accu: {val_accuracy:.4f} |'
+            f' train_accu: {train_accuracy:.4f}')
+
+    def __save_best(self,
+                    epoch: int,
+                    train_time: float):
+        """
+        Save best model based on validation loss.
+
+        :param epoch:
+            epoch where model to be saved was obtained.
+        :param train_time:
+            training time required to obtain this model.
+        """
+
+        self.best_model = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'train_loss': self.train_loss[-1],
+            'val_loss': self.val_loss[-1],
+            'train_accu': self.train_accu[-1],
+            'val_accu': self.val_accu[-1],
+            'best_time': train_time
+        }
+
+    @staticmethod
+    def evaluate_model(model: nn.Module,
+                       dataloader: DataLoader,
+                       device: str):
+        """
+        Evaluate a model in terms of accuracy and CE loss over a dataloader.
+
+        :param model:
+            classification model to be evaluated, instance or subclass of torch.nn.Module.
+        :param dataloader:
+            instance of torch.utils.data.DataLoader, representing dataset for evaluation.
+        :param device:
+            either cuda or cpu.
+
+        :return:
+            accuracy and CE-loss and tuple of predicted vs expected labels.
+        """
+
+        # evaluation stage (no-dropout and BN with current batch only), no gradient computation
+        model.eval()
+
+        # list to save predicted and expected labels
+        predicted, expected = [], []
+        temp_loss = 0.0
+
+        with torch.no_grad():
+            # iterate over dataloader
+            for inputs, labels in dataloader:
+                inputs, labels = inputs.to(device), labels.to(device)
+
+                # forward model and get predictions
+                outputs = model(inputs)
+                predictions = outputs.detach().cpu().numpy().argmax(axis=1)
+
+                # accumulate loss then move labels to cpu
+                temp_loss += F.cross_entropy(outputs, labels).item()
+                labels = labels.cpu().numpy().argmax(axis=1)
+
+                # save both expected as predicted labels
+                predicted.extend(predictions)
+                expected.extend(labels)
+
+        # compute CE loss and accuracy
+        temp_loss /= len(dataloader)
+        val_accuracy = accuracy_score(expected, predicted)
+
+        return (temp_loss,
+                val_accuracy,
+                (predicted, expected))
 
     def get_logs(self):
         """
@@ -252,49 +370,3 @@ class ModelTrainer(object):
         """
 
         return self.batch_size
-
-    @staticmethod
-    def evaluate_model(model: nn.Module,
-                       dataloader: DataLoader,
-                       device: str):
-        """
-        Evaluate a model in terms of accuracy and CE loss over a dataloader.
-
-        :param model:
-            classification model to be evaluated, instance or subclass of torch.nn.Module.
-        :param dataloader:
-            instance of torch.utils.data.DataLoader, representing dataset for evaluation.
-        :param device:
-            either cuda or cpu.
-
-        :return:
-            accuracy and CE-loss and tuple of predicted vs expected labels.
-        """
-
-        # list to save predicted and expected labels
-        predicted, expected = [], []
-        temp_loss = 0.0
-
-        # iterate over dataloader
-        for inputs, labels in dataloader:
-            inputs, labels = inputs.to(device), labels.to(device)
-
-            # forward model and get predictions
-            outputs = model(inputs)
-            predictions = outputs.detach().cpu().numpy().argmax(axis=1)
-
-            # accumulate loss then move labels to cpu
-            temp_loss += F.cross_entropy(outputs, labels).item()
-            labels = labels.cpu().numpy().argmax(axis=1)
-
-            # save both expected as predicted labels
-            predicted.extend(predictions)
-            expected.extend(labels)
-
-        # compute CE loss and accuracy
-        temp_loss /= len(dataloader)
-        val_accuracy = accuracy_score(expected, predicted)
-
-        return (temp_loss,
-                val_accuracy,
-                (predicted, expected))

@@ -1,11 +1,11 @@
 import torch
-import torch.nn.functional as F
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from data.cifar10 import CIFAR10SSL
 from models.wide_resnet import WideResNet
 from train.baseline import ModelTrainer
+from utils import one_hot_int
 
 if __name__ == '__main__':
     # define model Wide ResNet
@@ -20,7 +20,8 @@ if __name__ == '__main__':
         [transforms.ToTensor(),
          transforms.Normalize((0.49139968, 0.48215841, 0.44653091),
                               (0.24703223, 0.24348513, 0.26158784)),
-         transforms.RandomHorizontalFlip()])
+         transforms.RandomHorizontalFlip(),
+         transforms.RandomAffine(degrees=0, translate=(.125, .125))])
 
     # test and val transformations, no data augmentation
     transform_test = transforms.Compose(
@@ -29,7 +30,7 @@ if __name__ == '__main__':
                               (0.24703223, 0.24348513, 0.26158784))])
 
     # target transformation
-    target_transform = lambda label: F.one_hot(torch.tensor(label), num_classes=10).to(torch.float32)
+    target_transform = one_hot_int()
 
     # construct train, validation and test sets
     data_train = CIFAR10SSL(root_path='./cifar10',
@@ -73,5 +74,6 @@ if __name__ == '__main__':
                            batch_size=128,
                            device='cuda')
 
+    # empty gpu cache then train model
     torch.cuda.empty_cache()
     trainer.train()
