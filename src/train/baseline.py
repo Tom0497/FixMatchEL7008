@@ -9,6 +9,19 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class ModelTrainer(object):
+    """
+    Class represents training steps for classification model.
+
+    This class encapsulates the steps of training for a
+    classification model, every important variation can be
+    achieved through the constructor parameters. It only covers
+    supervised learning.
+
+    Logs are used to register accuracy and loss progression in every
+    epoch of training. Also, the best model is saved using the loss
+    on validation set as the criterion.
+    """
+
     def __init__(self,
                  model: nn.Module,
                  epochs: int,
@@ -18,6 +31,26 @@ class ModelTrainer(object):
                  val_set: Dataset,
                  batch_size: int,
                  device: str):
+        """
+        Constructor of ModelTrainer.
+
+        :param model:
+            classification model to be trained.
+        :param epochs:
+            maximum number of epochs to train.
+        :param optimizer:
+            optimization method, either ADAM or SGD.
+        :param lr:
+            initial learning rate for optimization method.
+        :param train_set:
+            training set, instance of torch.utils.data.Dataset.
+        :param val_set:
+            validation set, instance of torch.utils.data.Dataset.
+        :param batch_size:
+            batch size to use in DataLoader for training set.
+        :param device:
+            either cpu or cuda (gpu).
+        """
 
         # model, epochs, learning rate and device (cpu or cuda)
         self.model = model
@@ -41,7 +74,7 @@ class ModelTrainer(object):
                                    batch_size=batch_size,
                                    shuffle=True)
         self.val_dl = DataLoader(val_set,
-                                 batch_size=60,
+                                 batch_size=100,
                                  shuffle=False)
 
         # dict for saving of best model based on validation loss
@@ -78,7 +111,7 @@ class ModelTrainer(object):
 
                 # predictions for accuracy computation
                 predictions = outputs.detach().cpu().numpy().argmax(axis=1)
-                labels = labels.cpu().numpy()
+                labels = labels.cpu().numpy().argmax(axis=1)
 
                 # both labels and predictions are temporally stored to compute epoch accuracy
                 predicted.extend(predictions)
@@ -137,18 +170,24 @@ class ModelTrainer(object):
     def __resolve_optimizer(self, optimizer: str):
         """
         :return:
-            optimizer using string name. Options -> [adam, sgd]
+            optimizer using string name. Options -> [adam, sgd].
         """
 
         assert isinstance(optimizer, str) and optimizer in ('adam', 'sgd'), 'only adam or sgd supported'
         if optimizer == 'adam':
-            return optim.Adam(self.model.parameters(), lr=self.lr)
-        return optim.SGD(self.model.parameters(), lr=self.lr)
+            return optim.Adam(self.model.parameters(),
+                              lr=self.lr,
+                              betas=(0.9, 0.999))
+        return optim.SGD(self.model.parameters(),
+                         lr=self.lr,
+                         momentum=0.9,
+                         nesterov=True,
+                         weight_decay=0.0005)
 
     def get_logs(self):
         """
         :return:
-            accuracy and loss logs during training in train and evaluation sets
+            accuracy and loss logs during training in train and evaluation sets.
         """
 
         return (self.train_loss,
@@ -159,7 +198,7 @@ class ModelTrainer(object):
     def get_best_model(self):
         """
         :return:
-            best model obtained during training based on validation loss
+            best model obtained during training based on validation loss.
         """
 
         return self.best_model
@@ -167,7 +206,7 @@ class ModelTrainer(object):
     def get_train_time(self):
         """
         :return:
-            training time for total number of epochs (not necessarily best model)
+            training time for total number of epochs (not necessarily best model).
         """
 
         return self.train_time
@@ -175,7 +214,7 @@ class ModelTrainer(object):
     def get_model(self):
         """
         :return:
-            model obtained after total number of epochs (not necessarily best model)
+            model obtained after total number of epochs (not necessarily best model).
         """
 
         return self.model
@@ -183,7 +222,7 @@ class ModelTrainer(object):
     def get_lr(self):
         """
         :return:
-            initial learning rate used set for optimizer
+            initial learning rate used set for optimizer.
         """
 
         return self.lr
@@ -191,7 +230,7 @@ class ModelTrainer(object):
     def get_optimizer(self):
         """
         :return:
-            name of optimizer used for training -> [Adam, SGD]
+            name of optimizer used for training -> [Adam, SGD].
         """
 
         if isinstance(self.optimizer, optim.Adam):
@@ -201,7 +240,7 @@ class ModelTrainer(object):
     def get_epochs(self):
         """
         :return:
-            name of optimizer used for training -> [Adam, SGD]
+            name of optimizer used for training -> [Adam, SGD].
         """
 
         return self.epochs
@@ -209,7 +248,7 @@ class ModelTrainer(object):
     def get_batch_size(self):
         """
         :return:
-            batch size used for training set
+            batch size used for training set.
         """
 
         return self.batch_size
@@ -222,14 +261,14 @@ class ModelTrainer(object):
         Evaluate a model in terms of accuracy and CE loss over a dataloader.
 
         :param model:
-            classification model to be evaluated, instance or subclass of torch.nn.Module
+            classification model to be evaluated, instance or subclass of torch.nn.Module.
         :param dataloader:
-            instance of torch.utils.data.DataLoader, representing dataset for evaluation
+            instance of torch.utils.data.DataLoader, representing dataset for evaluation.
         :param device:
-            either cuda or cpu
+            either cuda or cpu.
 
         :return:
-            accuracy and CE-loss and tuple of predicted vs expected labels
+            accuracy and CE-loss and tuple of predicted vs expected labels.
         """
 
         # list to save predicted and expected labels
@@ -246,7 +285,7 @@ class ModelTrainer(object):
 
             # accumulate loss then move labels to cpu
             temp_loss += F.cross_entropy(outputs, labels).item()
-            labels = labels.cpu().numpy()
+            labels = labels.cpu().numpy().argmax(axis=1)
 
             # save both expected as predicted labels
             predicted.extend(predictions)
