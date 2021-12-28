@@ -32,6 +32,7 @@ class ModelTrainer(object):
                  train_set: Dataset,
                  val_set: Dataset,
                  batch_size: int,
+                 early_stopping: int,
                  device: str):
         """
         Constructor of ModelTrainer.
@@ -50,15 +51,18 @@ class ModelTrainer(object):
             validation set, instance of torch.utils.data.Dataset.
         :param batch_size:
             batch size to use in DataLoader for training set.
+        :param early_stopping:
+            patience in epochs for early stopping (0 means no ES).
         :param device:
             either cpu or cuda (gpu).
         """
 
-        # model, epochs, learning rate and device (cpu or cuda)
+        # model, epochs, learning rate, device (cpu or cuda), ES
         self.model = model
         self.epochs = epochs
         self.lr = lr
         self.device = device
+        self.early_stopping = early_stopping
 
         # loss function (cross-entropy) and optimizer (SGD or ADAM)
         self.lossfun = nn.CrossEntropyLoss()
@@ -94,8 +98,10 @@ class ModelTrainer(object):
         Execute the training of the model.
         """
 
-        # start time
+        # start time and patience counter
         init_time = time.time()
+        patience = 0
+        last_val_loss = 1e5
 
         for epoch in range(self.epochs):
             # training stage
@@ -121,6 +127,13 @@ class ModelTrainer(object):
                 best_time = time.time() - init_time
                 self.__save_best(epoch=epoch,
                                  train_time=best_time)
+
+            # check early stopping conditions
+            last_val_loss, patience, terminate = self.__early_stop(actual_loss=temp_val_loss,
+                                                                   last_loss=last_val_loss,
+                                                                   patience=patience)
+            if terminate:
+                break
 
         # total training time
         training_time = time.time() - init_time
@@ -251,6 +264,35 @@ class ModelTrainer(object):
             'val_accu': self.val_accu[-1],
             'best_time': train_time
         }
+
+    def __early_stop(self,
+                     actual_loss: float,
+                     last_loss: float,
+                     patience: int):
+        """
+        Determine if early stopping conditions are met.
+
+        :param actual_loss:
+            validation loss of actual training epoch.
+        :param last_loss:
+            validation loss of previous epoch.
+        :param patience:
+            number of epochs validation loss has not improved.
+
+        :return:
+            actual loss, patience and whether to terminate training.
+        """
+
+        # validation loss doesn't improve
+        if actual_loss >= last_loss:
+            patience += 1
+        # patience reset when validation loss improves
+        else:
+            patience = 0
+
+        return (actual_loss,
+                patience,
+                patience >= self.early_stopping)
 
     @staticmethod
     def evaluate_model(model: nn.Module,

@@ -1,70 +1,64 @@
 import torch
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
 
+from augmentation.weakaug import WeakAugmentation
 from data.cifar10 import CIFAR10SSL
 from models.wide_resnet import WideResNet
 from train.baseline import ModelTrainer
 from utils import one_hot_int
 
+
+def options():
+
+    return 0
+
+
 if __name__ == '__main__':
-    # define model Wide ResNet
+    """
+    Fully supervised classification over CIFAR 10.
+    
+    A Wide ResNet model of depth 28 and width 2 is trained for
+    classification over the dataset CIFAR 10. This serves as a
+    baseline for semi-supervised learning (SSL) task. 
+    
+    CIFAR consists of 60000 images for training and 10000 for
+    test, in order to have a validation set, 10000 images from
+    training set are destined for validation. 
+    
+    All data is normalized using mean and standard deviation 
+    from training set. Data augmentation composed of random
+    horizontal flip and random translations in X and Y are
+    used for training. Labels are transformed to one hot encoding.
+    """
+
+    # model
     wrn_model = WideResNet(depth=28,
                            width=2,
                            n_classes=10,
-                           dropout=0.3)
-    wrn_model.to('cuda')
+                           dropout=0.3).to('cuda')
 
-    # train transformations with mild data augmentation
-    transform_train = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.49139968, 0.48215841, 0.44653091),
-                              (0.24703223, 0.24348513, 0.26158784)),
-         transforms.RandomHorizontalFlip(),
-         transforms.RandomAffine(degrees=0, translate=(.125, .125))])
-
-    # test and val transformations, no data augmentation
-    transform_test = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.49139968, 0.48215841, 0.44653091),
-                              (0.24703223, 0.24348513, 0.26158784))])
-
-    # target transformation
+    # transformations
+    transform_train = WeakAugmentation()
+    transform_test = WeakAugmentation(h_flip_prob=0, translate=(0, 0))
     target_transform = one_hot_int()
 
-    # construct train, validation and test sets
+    # train, validation and test sets
     data_train = CIFAR10SSL(root_path='./cifar10',
                             train=True,
                             data_range=(0, 4000),
                             transform=transform_train,
                             target_transform=target_transform)
-
     data_val = CIFAR10SSL(root_path='./cifar10',
                           train=True,
                           data_range=(4000, 5000),
                           transform=transform_test,
                           target_transform=target_transform)
-
     data_test = CIFAR10SSL(root_path='./cifar10',
                            train=False,
                            data_range=(0, 1000),
                            transform=transform_test,
                            target_transform=target_transform)
 
-    # construct data loaders for model
-    train_dl = DataLoader(dataset=data_train,
-                          batch_size=512,
-                          shuffle=True)
-
-    val_dl = DataLoader(dataset=data_val,
-                        batch_size=100,
-                        shuffle=False)
-
-    test_dl = DataLoader(dataset=data_test,
-                         batch_size=100,
-                         shuffle=False)
-
-    # define training scheme
+    # training scheme
     trainer = ModelTrainer(model=wrn_model,
                            epochs=5,
                            optimizer='sgd',
@@ -72,8 +66,9 @@ if __name__ == '__main__':
                            train_set=data_train,
                            val_set=data_val,
                            batch_size=128,
+                           early_stopping=15,
                            device='cuda')
 
-    # empty gpu cache then train model
+    # empty gpu cache before train model
     torch.cuda.empty_cache()
     trainer.train()
