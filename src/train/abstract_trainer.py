@@ -1,5 +1,9 @@
 import time
+from abc import ABC
+from abc import abstractmethod
+from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,18 +14,15 @@ from torch.utils.data import DataLoader, Dataset
 from utils import cosine_decay
 
 
-class ModelTrainer(object):
+class AbstractTrainer(ABC):
     """
-    Class represents training steps for classification model.
+    Classification model abstract trainer.
 
-    This class encapsulates the steps of training for a
-    classification model, every important variation can be
-    achieved through the constructor parameters. It only covers
-    supervised learning.
-
-    Logs are used to register accuracy and loss progression in every
-    epoch of training. Also, the best model is saved using the loss
-    on validation set as the criterion.
+    This abstract class defines the common functionality that
+    both supervised and semi-supervised training schemes share.
+    In particular, evaluation method is the same for both cases
+    given that the difference lays in the training step and
+    loss functions each one considers.
     """
 
     def __init__(self,
@@ -29,13 +30,12 @@ class ModelTrainer(object):
                  epochs: int,
                  optimizer: str,
                  lr: float,
-                 train_set: Dataset,
                  val_set: Dataset,
                  batch_size: int,
                  early_stopping: int,
                  device: str):
         """
-        Constructor of ModelTrainer.
+        Constructor of AbstractTrainer.
 
         :param model:
             classification model to be trained.
@@ -45,8 +45,6 @@ class ModelTrainer(object):
             optimization method, either ADAM or SGD.
         :param lr:
             initial learning rate for optimization method.
-        :param train_set:
-            training set, instance of torch.utils.data.Dataset.
         :param val_set:
             validation set, instance of torch.utils.data.Dataset.
         :param batch_size:
@@ -57,7 +55,7 @@ class ModelTrainer(object):
             either cpu or cuda (gpu).
         """
 
-        # model, epochs, learning rate, device (cpu or cuda), ES
+        # model, epochs, learning rate, device (cpu or cuda), early stopping
         self.model = model
         self.epochs = epochs
         self.lr = lr
@@ -65,7 +63,7 @@ class ModelTrainer(object):
         self.early_stopping = early_stopping
 
         # loss function (cross-entropy) and optimizer (SGD or ADAM)
-        self.lossfun = nn.CrossEntropyLoss()
+        self.loss_function = nn.CrossEntropyLoss()
         self.optimizer = self.__resolve_optimizer(optimizer)
 
         # learning rate schedule (cosine decay)
@@ -78,11 +76,8 @@ class ModelTrainer(object):
         self.val_loss = []
         self.val_accu = []
 
-        # batch size and data-loaders for training and validation set
+        # batch size and data-loaders for validation set
         self.batch_size = batch_size
-        self.train_dl = DataLoader(train_set,
-                                   batch_size=batch_size,
-                                   shuffle=True)
         self.val_dl = DataLoader(val_set,
                                  batch_size=100,
                                  shuffle=False)
@@ -99,13 +94,14 @@ class ModelTrainer(object):
         """
 
         # start time and patience counter
+        print('\n Beginning model training\n')
         init_time = time.time()
         patience = 0
         last_val_loss = 1e5
 
         for epoch in range(self.epochs):
             # training stage
-            temp_train_loss, train_accuracy = self.__train_epoch()
+            temp_train_loss, train_accuracy = self._train_epoch()
 
             # evaluation stage
             temp_val_loss, val_accuracy, _ = self.evaluate_model(self.model,
@@ -133,15 +129,24 @@ class ModelTrainer(object):
                                                                    last_loss=last_val_loss,
                                                                    patience=patience)
             if terminate:
+                print('\nTraining early stopped.\n')
                 break
 
         # total training time
         training_time = time.time() - init_time
         self.train_time = training_time
-        print(f'Training completed -- training time: {training_time:.3f} s')
+        print(f'\nTraining completed -- training time: {training_time:.3f} s\n')
 
     def __resolve_optimizer(self, optimizer: str):
         """
+        Choose an optimizer based on string input.
+
+        Choices for optimizers are ADAM (Adaptive Moment Estimation) or
+        SGD (Stochastic Gradient Descent). The user can decide only the
+        initial learning rate, but all other parameters of these optimizers
+        are fixed. <https://arxiv.org/pdf/1605.07146.pdf> gives the best
+        values obtained through extensive experimentation.
+
         :return:
             optimizer using string name. Options -> [adam, sgd].
         """
@@ -161,51 +166,13 @@ class ModelTrainer(object):
                          nesterov=True,
                          weight_decay=0.0005)
 
-    def __train_epoch(self):
+    @abstractmethod
+    def _train_epoch(self):
         """
         Perform one epoch of training.
-
-        :return:
-            CE-loss and accuracy computed over training dataset.
         """
 
-        # training stage
-        self.model.train()
-
-        # list to save predicted and expected labels
-        temp_loss = 0.0
-        predicted, expected = [], []
-
-        # for cycle defines an epoch for train set
-        for inputs, labels in self.train_dl:
-            inputs, labels = inputs.to(self.device), labels.to(self.device)
-
-            # set gradient values to zero
-            self.optimizer.zero_grad()
-
-            # model forward, loss and gradient computation, weights update
-            outputs = self.model(inputs)
-            loss = self.lossfun(outputs, labels)
-            loss.backward()
-            self.optimizer.step()
-
-            # predictions for accuracy computation
-            predictions = outputs.detach().cpu().numpy().argmax(axis=1)
-            labels = labels.cpu().numpy().argmax(axis=1)
-
-            # both labels and predictions are temporally stored to compute epoch accuracy
-            predicted.extend(predictions)
-            expected.extend(labels)
-
-            # accumulated loss for epoch
-            temp_loss += loss.item()
-
-        # accuracy and loss computation for one epoch of training
-        train_accuracy = accuracy_score(expected, predicted)
-        temp_loss /= len(self.train_dl)
-
-        return (temp_loss,
-                train_accuracy)
+        return NotImplementedError
 
     def __log_epoch(self,
                     epoch: int,
@@ -343,6 +310,25 @@ class ModelTrainer(object):
         return (temp_loss,
                 val_accuracy,
                 (predicted, expected))
+
+    def save_logs(self,
+                  base: str,
+                  metrics_fname: str = 'metrics.pt',
+                  model_fname: str = 'checkpoint.pt'):
+        root = Path('./runs').resolve()
+        metrics_path = base / root / 'metrics'
+        models_path = base / root / 'models'
+
+        metrics_path.mkdir(parents=True, exist_ok=True)
+        models_path.mkdir(parents=True, exist_ok=True)
+
+        torch.save(obj={
+            'train_loss': np.asarray(self.train_loss),
+            'train_acc': np.asarray(self.train_accu),
+            'val_loss': np.asarray(self.val_loss),
+            'val_acc': np.asarray(self.val_accu)
+        }, f=metrics_path / metrics_fname)
+        torch.save(obj=self.best_model, f=models_path / model_fname)
 
     def get_logs(self):
         """

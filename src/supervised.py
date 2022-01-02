@@ -3,7 +3,7 @@ import torch
 from augmentation.weakaug import WeakAugmentation
 from data.cifar10 import CIFAR10SSL
 from models.wide_resnet import WideResNet
-from train.baseline import ModelTrainer
+from train.supervisedtrainer import SupervisedTrainer
 from utils import one_hot_int
 
 
@@ -42,33 +42,29 @@ if __name__ == '__main__':
     target_transform = one_hot_int()
 
     # train, validation and test sets
-    data_train = CIFAR10SSL(root_path='./cifar10',
+    data_train = CIFAR10SSL(root_path='./src/cifar10',
                             train=True,
-                            data_range=(0, 4000),
+                            data_range=(0, 25),
                             transform=transform_train,
                             target_transform=target_transform)
-    data_val = CIFAR10SSL(root_path='./cifar10',
+    data_val = CIFAR10SSL(root_path='./src/cifar10',
                           train=True,
-                          data_range=(4000, 5000),
+                          data_range=(4000, 4100),
                           transform=transform_test,
                           target_transform=target_transform)
-    data_test = CIFAR10SSL(root_path='./cifar10',
-                           train=False,
-                           data_range=(0, 1000),
-                           transform=transform_test,
-                           target_transform=target_transform)
 
     # training scheme
-    trainer = ModelTrainer(model=wrn_model,
-                           epochs=5,
-                           optimizer='sgd',
-                           lr=0.03,
-                           train_set=data_train,
-                           val_set=data_val,
-                           batch_size=128,
-                           early_stopping=15,
-                           device='cuda')
+    trainer = SupervisedTrainer(model=wrn_model,
+                                epochs=5,
+                                optimizer='sgd',
+                                lr=0.03,
+                                train_set=data_train,
+                                val_set=data_val,
+                                batch_size=128,
+                                early_stopping=15,
+                                device='cuda')
 
     # empty gpu cache before train model
     torch.cuda.empty_cache()
     trainer.train()
+    trainer.save_logs(base='src')
