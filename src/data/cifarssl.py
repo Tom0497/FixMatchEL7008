@@ -1,7 +1,10 @@
+from pathlib import Path
 from typing import Tuple, Optional, Callable
 
 import numpy as np
 from torchvision.datasets import CIFAR10
+
+from definitions import DATASETS_DIR
 
 
 class CIFAR10SSL(CIFAR10):
@@ -18,8 +21,12 @@ class CIFAR10SSL(CIFAR10):
     University of Toronto.
     """
 
+    # number of examples per class in train and test
+    per_class_train = 5000
+    per_class_test = 1000
+
     def __init__(self,
-                 root_path: str,
+                 root_path: str or Path,
                  train: bool,
                  data_range: Tuple[int, int],
                  transform: Optional[Callable] = None,
@@ -58,14 +65,14 @@ class CIFAR10SSL(CIFAR10):
         self.targets = self.targets[permutation]
         self.data = self.data[permutation]
 
-    def mean_and_std(self):
+    def mean_and_std(self) -> tuple[list, list]:
         """
         :return:
             mean and standard deviation of dataset per channel.
         """
 
-        return ((self.data/255).mean(axis=(0, 1, 2)),
-                (self.data/255).std(axis=(0, 1, 2)))
+        return ((self.data / 255).mean(axis=(0, 1, 2)),
+                (self.data / 255).std(axis=(0, 1, 2)))
 
     def __order_data(self):
         """
@@ -91,7 +98,7 @@ class CIFAR10SSL(CIFAR10):
         assert isinstance(range_l, int) and isinstance(range_h, int), 'numbers must be integers'
 
         # check if data_range is within boundaries and valid
-        max_val = 5000 if self.train else 1000
+        max_val = self.per_class_train if self.train else self.per_class_test
         assert 0 <= range_l < range_h <= max_val, f'invalid range (max {max_val} img/class)'
 
         # select data and targets specified by validated data_range
@@ -100,10 +107,63 @@ class CIFAR10SSL(CIFAR10):
         self.targets = self.targets[ids]
 
 
+class CIFAR100SSL(CIFAR10SSL):
+    """
+    Dataset CIFAR100 adapted for semi-supervised learning.
+
+    Adapts CIFAR100 dataset class provided by PyTorch by allowing a
+    range which selects a subset of images for each class.
+
+    CIFAR-100 dataset consists of 60k 32x32 colour images, from 100
+    classes, 600 images per class. 50k are training images and 10k
+    are test images. The home page of the dataset is provided
+    in <https://www.cs.toronto.edu/~kriz/cifar.html> by the
+    University of Toronto.
+
+    This is a subclass of the `CIFAR10SSL` Dataset.
+    """
+
+    base_folder = "cifar-100-python"
+    url = "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz"
+    filename = "cifar-100-python.tar.gz"
+    tgz_md5 = "eb9058c3a382ffc7106e4002c42a8d85"
+    train_list = [
+        ["train", "16019d7e3df5f24257cddd939b257f8d"],
+    ]
+
+    test_list = [
+        ["test", "f0ef6b0ae62326f3e7ffdfab6717acfc"],
+    ]
+    meta = {
+        "filename": "meta",
+        "key": "fine_label_names",
+        "md5": "7973b15100ade9c7d40fb424638fde48",
+    }
+
+    # number of examples per class in train and test
+    per_class_train = 500
+    per_class_test = 100
+
+
 if __name__ == "__main__":
-    cifar10ds = CIFAR10SSL(root_path='./cifar10', train=True, data_range=(0, 5000))
-    print('Cantidad de datos en dataset: ', len(cifar10ds))
+    path = DATASETS_DIR / 'cifar10'
+    cifar10ds = CIFAR10SSL(root_path=path,
+                           train=True,
+                           data_range=(0, 5000))
+    print('Total number of images in dataset: ', len(cifar10ds))
+    print('Total number of classes in dataset: ', len(cifar10ds.classes))
     mean, std = cifar10ds.mean_and_std()
+    print(f"""
+    Mean +/- Std: {mean} +/- {std}
+    """)
+
+    path1 = DATASETS_DIR / 'cifar100'
+    cifar100ds = CIFAR100SSL(root_path=path1,
+                             train=True,
+                             data_range=(0, 500))
+    print('Total number of images in dataset: ', len(cifar100ds))
+    print('Total number of classes in dataset: ', len(cifar100ds.classes))
+    mean, std = cifar100ds.mean_and_std()
     print(f"""
     Mean +/- Std: {mean} +/- {std}
     """)

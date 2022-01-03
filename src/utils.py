@@ -37,23 +37,23 @@ def one_hot_int(num_classes: int = 10,
     return function
 
 
-def cosine_decay(epochs: int) -> Callable[[int], float]:
+def cosine_decay(steps: int) -> Callable[[int], float]:
     """
     Returns a function that performs cosine decay.
 
-    :param epochs:
-        maximum number of epochs considered for decay.
+    :param steps:
+        maximum number of steps considered for decay.
     :return:
         cosine decay function.
     """
 
-    def function(epoch: int) -> float:
+    def function(step: int) -> float:
         """
         :return:
             factor that will decay another value.
         """
 
-        arg = 7 * np.pi * epoch / (16 * epochs)
+        arg = 7 * np.pi * step / (16 * steps)
         return np.cos(arg)
 
     return function

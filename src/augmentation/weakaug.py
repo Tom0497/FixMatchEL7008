@@ -4,6 +4,9 @@ import torchvision.transforms as transforms
 CIFAR10_MEAN = (0.49139968, 0.48215841, 0.44653091)
 CIFAR10_STD = (0.24703223, 0.24348513, 0.26158784)
 
+CIFAR100_MEAN = (0.50707516, 0.48654887, 0.44091784)
+CIFAR100_STD = (0.26733429, 0.25643846, 0.27615047)
+
 
 class WeakAugmentation(nn.Module):
     """

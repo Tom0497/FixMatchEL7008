@@ -1,3 +1,4 @@
+import sys
 import time
 from abc import ABC
 from abc import abstractmethod
@@ -10,8 +11,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, Dataset
-
-from utils import cosine_decay
 
 
 class AbstractTrainer(ABC):
@@ -40,7 +39,7 @@ class AbstractTrainer(ABC):
         :param model:
             classification model to be trained.
         :param epochs:
-            maximum number of epochs to train.
+            maximum number of steps to train.
         :param optimizer:
             optimization method, either ADAM or SGD.
         :param lr:
@@ -50,12 +49,12 @@ class AbstractTrainer(ABC):
         :param batch_size:
             batch size to use in DataLoader for training set.
         :param early_stopping:
-            patience in epochs for early stopping (0 means no ES).
+            patience in steps for early stopping (0 means no ES).
         :param device:
             either cpu or cuda (gpu).
         """
 
-        # model, epochs, learning rate, device (cpu or cuda), early stopping
+        # model, steps, learning rate, device (cpu or cuda), early stopping
         self.model = model
         self.epochs = epochs
         self.lr = lr
@@ -65,10 +64,6 @@ class AbstractTrainer(ABC):
         # loss function (cross-entropy) and optimizer (SGD or ADAM)
         self.loss_function = nn.CrossEntropyLoss()
         self.optimizer = self.__resolve_optimizer(optimizer)
-
-        # learning rate schedule (cosine decay)
-        self.lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer=self.optimizer,
-                                                        lr_lambda=cosine_decay(epochs=self.epochs))
 
         # logs for accuracy and loss in training and validation sets
         self.train_loss = []
@@ -81,6 +76,9 @@ class AbstractTrainer(ABC):
         self.val_dl = DataLoader(val_set,
                                  batch_size=100,
                                  shuffle=False)
+
+        # learning rate schedule (cosine decay)
+        self.lr_scheduler = self._set_lr_scheduler()
 
         # dict for saving of best model based on validation loss
         self.best_model = {'val_loss': 1e5}
@@ -108,9 +106,6 @@ class AbstractTrainer(ABC):
                                                                  self.val_dl,
                                                                  self.device)
 
-            # learning rate schedule
-            self.lr_scheduler.step()
-
             # log and display current epoch metrics
             self.__log_epoch(epoch=epoch,
                              train_loss=temp_train_loss,
@@ -121,8 +116,8 @@ class AbstractTrainer(ABC):
             # save model with the lowest validation loss
             if self.best_model['val_loss'] > temp_val_loss:
                 best_time = time.time() - init_time
-                self.__save_best(epoch=epoch,
-                                 train_time=best_time)
+                self.__log_best(epoch=epoch,
+                                train_time=best_time)
 
             # check early stopping conditions
             last_val_loss, patience, terminate = self.__early_stop(actual_loss=temp_val_loss,
@@ -169,7 +164,15 @@ class AbstractTrainer(ABC):
     @abstractmethod
     def _train_epoch(self):
         """
-        Perform one epoch of training.
+        Protected method - Perform one epoch of training.
+        """
+
+        return NotImplementedError
+
+    @abstractmethod
+    def _set_lr_scheduler(self):
+        """
+        :return:
         """
 
         return NotImplementedError
@@ -181,7 +184,7 @@ class AbstractTrainer(ABC):
                     train_accuracy: float,
                     val_accuracy: float):
         """
-        Log and display important metrics from an epoch.
+        Private method - Log and display important metrics from an epoch.
 
         :param epoch:
             training epoch.
@@ -203,18 +206,18 @@ class AbstractTrainer(ABC):
         self.val_loss.append(val_loss)
         self.val_accu.append(val_accuracy)
 
-        print(
-            f'[Epoch {epoch}]'
+        sys.stdout.write(
+            f'\r[Epoch {epoch}]'
             f' train_loss: {train_loss:.4f} |'
             f' val_loss: {val_loss:.4f} |'
             f' val_accu: {val_accuracy:.4f} |'
-            f' train_accu: {train_accuracy:.4f}')
+            f' train_accu: {train_accuracy:.4f}\n')
 
-    def __save_best(self,
-                    epoch: int,
-                    train_time: float):
+    def __log_best(self,
+                   epoch: int,
+                   train_time: float):
         """
-        Save best model based on validation loss.
+        Private method - Save best model based on validation loss.
 
         :param epoch:
             epoch where model to be saved was obtained.
@@ -237,14 +240,14 @@ class AbstractTrainer(ABC):
                      last_loss: float,
                      patience: int):
         """
-        Determine if early stopping conditions are met.
+        Private method - Determine if early stopping conditions are met.
 
         :param actual_loss:
             validation loss of actual training epoch.
         :param last_loss:
             validation loss of previous epoch.
         :param patience:
-            number of epochs validation loss has not improved.
+            number of steps validation loss has not improved.
 
         :return:
             actual loss, patience and whether to terminate training.
@@ -266,7 +269,7 @@ class AbstractTrainer(ABC):
                        dataloader: DataLoader,
                        device: str):
         """
-        Evaluate a model in terms of accuracy and CE loss over a dataloader.
+        Static Method - Evaluate a model in terms of accuracy and CE loss over a dataloader.
 
         :param model:
             classification model to be evaluated, instance or subclass of torch.nn.Module.
@@ -312,12 +315,12 @@ class AbstractTrainer(ABC):
                 (predicted, expected))
 
     def save_logs(self,
-                  base: str,
+                  base_path: str or Path,
                   metrics_fname: str = 'metrics.pt',
                   model_fname: str = 'checkpoint.pt'):
-        root = Path('./runs').resolve()
-        metrics_path = base / root / 'metrics'
-        models_path = base / root / 'models'
+
+        metrics_path = base_path / 'metrics'
+        models_path = base_path / 'models'
 
         metrics_path.mkdir(parents=True, exist_ok=True)
         models_path.mkdir(parents=True, exist_ok=True)
@@ -352,7 +355,7 @@ class AbstractTrainer(ABC):
     def get_train_time(self):
         """
         :return:
-            training time for total number of epochs (not necessarily best model).
+            training time for total number of steps (not necessarily best model).
         """
 
         return self.train_time
@@ -360,7 +363,7 @@ class AbstractTrainer(ABC):
     def get_model(self):
         """
         :return:
-            model obtained after total number of epochs (not necessarily best model).
+            model obtained after total number of steps (not necessarily best model).
         """
 
         return self.model
