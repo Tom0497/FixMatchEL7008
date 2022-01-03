@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torchvision.transforms as transforms
 
+from typing import Tuple
+
 CIFAR10_MEAN = (0.49139968, 0.48215841, 0.44653091)
 CIFAR10_STD = (0.24703223, 0.24348513, 0.26158784)
 
@@ -35,9 +37,9 @@ class WeakAugmentation(nn.Module):
 
     def __init__(self,
                  h_flip_prob: float = 0.5,
-                 translate: tuple[float, float] = (.125, .125),
-                 mean: tuple[int, ...] = CIFAR10_MEAN,
-                 std: tuple[int, ...] = CIFAR10_STD):
+                 translate: Tuple[float, float] = (.125, .125),
+                 mean: Tuple[int, ...] = CIFAR10_MEAN,
+                 std: Tuple[int, ...] = CIFAR10_STD):
         """
         Constructor of WeakAugmentation module.
 
