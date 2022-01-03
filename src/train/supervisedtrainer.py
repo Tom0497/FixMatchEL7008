@@ -5,8 +5,8 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, Dataset
 
-from train.abstract_trainer import AbstractTrainer
-from utils import cosine_decay
+from src.train.abstract_trainer import AbstractTrainer
+from src.utils import cosine_decay
 
 
 class SupervisedTrainer(AbstractTrainer):

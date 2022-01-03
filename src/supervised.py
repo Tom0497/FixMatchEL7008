@@ -2,13 +2,13 @@ import argparse
 
 import torch
 
-from augmentation.weakaug import CIFAR10_MEAN, CIFAR10_STD
-from augmentation.weakaug import WeakAugmentation
-from data.cifarssl import CIFAR10SSL
 from definitions import DATASETS_DIR, RUNS_DIR
-from models.wide_resnet import WideResNet
-from train.supervisedtrainer import SupervisedTrainer
-from utils import one_hot_int
+from src.augmentation.weakaug import CIFAR10_MEAN, CIFAR10_STD
+from src.augmentation.weakaug import WeakAugmentation
+from src.data.cifarssl import CIFAR10SSL
+from src.models.wide_resnet import WideResNet
+from src.train.supervisedtrainer import SupervisedTrainer
+from src.utils import one_hot_int
 
 
 def options():
