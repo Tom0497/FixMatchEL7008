@@ -65,7 +65,7 @@ class CIFAR10SSL(CIFAR10):
         self.targets = self.targets[permutation]
         self.data = self.data[permutation]
 
-    def mean_and_std(self) -> tuple[list, list]:
+    def mean_and_std(self) -> Tuple[list, list]:
         """
         :return:
             mean and standard deviation of dataset per channel.
