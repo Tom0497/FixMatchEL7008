@@ -303,6 +303,12 @@ class WideResNet(nn.Module):
 
         return sum(p.numel() for p in self.parameters())
 
+    def __str__(self) -> str:
+        """String representation of model's name."""
+
+        model_name = f'WideResNet - WRN-{self.n}-{self.k}'
+        return model_name
+
 
 if __name__ == "__main__":
     model = WideResNet(depth=28, width=2, n_classes=10)

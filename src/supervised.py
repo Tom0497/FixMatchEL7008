@@ -2,65 +2,21 @@ import argparse
 
 import torch
 
+from definitions import CIFAR10_MEAN, CIFAR10_STD, CIFAR100_MEAN, CIFAR100_STD
 from definitions import DATASETS_DIR, RUNS_DIR
-from src.augmentation.weakaug import CIFAR10_MEAN, CIFAR10_STD, CIFAR100_MEAN, CIFAR100_STD
 from src.augmentation.weakaug import WeakAugmentation
-from src.data.cifarssl import CIFAR10SSL
+from src.data.cifarssl import CIFAR10SSL, CIFAR100SSL
 from src.models.wide_resnet import WideResNet
 from src.train.supervisedtrainer import SupervisedTrainer
-from src.utils import one_hot_int
-
-
-def options():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-d", "--data",
-                        help="dataset for training",
-                        choices=['cifar10', 'cifar100'],
-                        default='cifar10')
-    parser.add_argument("-e", "--epochs",
-                        help="number of epochs for training",
-                        type=int,
-                        default=30)
-    parser.add_argument("-bs", "--batch-size",
-                        help="batch size for training",
-                        type=int,
-                        default=128)
-    parser.add_argument("-md", "--model-depth",
-                        help="depth of Wide ResNet model",
-                        type=int,
-                        default=28)
-    parser.add_argument("-mw", "--model-width",
-                        help="width of Wide ResNet model",
-                        type=int,
-                        default=2)
-    parser.add_argument("-es", "--early-stopping",
-                        help="number of epochs for early stopping",
-                        type=int,
-                        default=15)
-    parser.add_argument("-r", "--results",
-                        help="folder name for training results",
-                        default="alldata")
-    parser.add_argument("-tr", "--train-range",
-                        help="range of images per class for training",
-                        nargs=2,
-                        type=int,
-                        default=[0, 4000])
-    parser.add_argument("-vr", "--val-range",
-                        help="range of images per class for validation",
-                        nargs=2,
-                        type=int,
-                        default=[4000, 5000])
-
-    return parser.parse_args()
+from src.utils import one_hot_int, options
 
 
 def main(opt: argparse.Namespace) -> int:
     """
-    Fully supervised classification over CIFAR 10.
+    Fully supervised classification over CIFAR dataset (10 or 100).
 
-    A Wide ResNet model of depth 28 and width 2 is trained for
-    classification over the dataset CIFAR 10. This serves as a
+    A Wide ResNet model of adjustable depth and width is trained for
+    classification over the dataset CIFAR. This serves as a
     baseline for semi-supervised learning (SSL) task.
 
     CIFAR consists of 60000 images for training and 10000 for
@@ -85,15 +41,18 @@ def main(opt: argparse.Namespace) -> int:
     if dataset == 'cifar10':
         mean, std = CIFAR10_MEAN, CIFAR10_STD
         n_classes = 10
-    else:
+        DataClass = CIFAR10SSL
+    else:  # cifar 100
         mean, std = CIFAR100_MEAN, CIFAR100_STD
         n_classes = 100
+        DataClass = CIFAR100SSL
 
     # model
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     wrn_model = WideResNet(depth=model_depth,
                            width=model_width,
                            n_classes=n_classes,
-                           dropout=0.3).to('cuda')
+                           dropout=0.3).to(device)
 
     # transformations
     transform_train = WeakAugmentation(mean=mean,
@@ -106,16 +65,16 @@ def main(opt: argparse.Namespace) -> int:
 
     # train, validation and test sets
     data_path = DATASETS_DIR / dataset
-    data_train = CIFAR10SSL(root_path=data_path,
-                            train=True,
-                            data_range=train_range,
-                            transform=transform_train,
-                            target_transform=target_transform)
-    data_val = CIFAR10SSL(root_path=data_path,
-                          train=True,
-                          data_range=val_range,
-                          transform=transform_test,
-                          target_transform=target_transform)
+    data_train = DataClass(root_path=data_path,
+                           train=True,
+                           data_range=train_range,
+                           transform=transform_train,
+                           target_transform=target_transform)
+    data_val = DataClass(root_path=data_path,
+                         train=True,
+                         data_range=val_range,
+                         transform=transform_test,
+                         target_transform=target_transform)
 
     # training scheme
     trainer = SupervisedTrainer(model=wrn_model,
@@ -126,7 +85,7 @@ def main(opt: argparse.Namespace) -> int:
                                 val_set=data_val,
                                 batch_size=batch_size,
                                 early_stopping=patience,
-                                device='cuda')
+                                device=device)
 
     # empty gpu cache before train model
     torch.cuda.empty_cache()
@@ -134,7 +93,7 @@ def main(opt: argparse.Namespace) -> int:
 
     # save results
     logs_path = RUNS_DIR / results_folder
-    trainer.save_logs(base_path=logs_path)
+    trainer.summary.save_logs(base_path=logs_path)
 
     return 1
 

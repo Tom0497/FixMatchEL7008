@@ -1,5 +1,3 @@
-import sys
-
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
@@ -71,6 +69,9 @@ class SupervisedTrainer(AbstractTrainer):
                          early_stopping=early_stopping,
                          device=device)
 
+        # register training hyperparameters
+        self.summary.log_hyperparams(hyperparams=self.get_hyperparams())
+
     def _train_epoch(self):
         """
         Protected method - Perform one epoch of supervised training.
@@ -119,14 +120,17 @@ class SupervisedTrainer(AbstractTrainer):
             # loss and accuracy over a single step of training
             temp_loss = loss.item()
             temp_accu = accuracy_score(labels, predictions)
-            sys.stdout.write(f'\r[{temp_count}/{image_num}] loss: {temp_loss:.4f} | accu: {temp_accu:.4f}')
+            self.summary.log_step(partial=temp_count,
+                                  total=image_num,
+                                  loss=temp_loss,
+                                  accuracy=temp_accu)
 
             # accumulated loss for epoch
             train_loss += temp_loss
-            train_accuracy += temp_accu
+            train_accuracy += temp_accu * len(labels)
 
         # accuracy and loss computation for one epoch of training
-        train_accuracy /= len(self.train_dl)
+        train_accuracy /= temp_count
         train_loss /= len(self.train_dl)
 
         return train_loss, train_accuracy
@@ -143,3 +147,21 @@ class SupervisedTrainer(AbstractTrainer):
 
         return optim.lr_scheduler.LambdaLR(optimizer=self.optimizer,
                                            lr_lambda=cosine_decay(steps=max_steps))
+
+    def get_hyperparams(self):
+        """
+        :return:
+            Hyper parameters used for training the model.
+        """
+
+        hyper_params = {
+            'model': str(self.model),
+            'n_params': self.model.num_parameters(),
+            'epochs': self.epochs,
+            'batch_size': self.batch_size,
+            'lr': self.lr,
+            'val_range': self.val_dl.dataset.data_range,
+            'train_range': self.train_dl.dataset.data_range,
+            'es': self.early_stopping
+        }
+        return hyper_params
