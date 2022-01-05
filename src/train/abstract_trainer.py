@@ -93,7 +93,7 @@ class AbstractTrainer(ABC):
 
         for epoch in range(1, self.epochs + 1):
             # training stage
-            temp_train_loss, train_accuracy = self._train_epoch()
+            temp_train_loss, train_accuracy, ep_time, it_time = self._train_epoch()
 
             # evaluation stage
             temp_val_loss, val_accuracy, _ = self.evaluate_model(self.model,
@@ -105,7 +105,9 @@ class AbstractTrainer(ABC):
                                    train_loss=temp_train_loss,
                                    val_loss=temp_val_loss,
                                    train_acc=train_accuracy,
-                                   val_acc=val_accuracy)
+                                   val_acc=val_accuracy,
+                                   epoch_time=ep_time,
+                                   iter_time=it_time)
 
             # save model with the lowest validation loss
             if best_val_loss > temp_val_loss:

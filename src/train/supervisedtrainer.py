@@ -1,3 +1,5 @@
+import time
+
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score
@@ -58,7 +60,8 @@ class SupervisedTrainer(AbstractTrainer):
         # data-loader for training set
         self.train_dl = DataLoader(train_set,
                                    batch_size=batch_size,
-                                   shuffle=True)
+                                   shuffle=True,
+                                   pin_memory=True if device == 'cuda' else False)
 
         super().__init__(model=model,
                          epochs=epochs,
@@ -87,6 +90,8 @@ class SupervisedTrainer(AbstractTrainer):
 
         # training stage
         self.model.train()
+        init_time = time.time()
+        it_per_sec = 0
 
         # placeholders for loss and accuracy computation
         train_loss = 0
@@ -97,7 +102,7 @@ class SupervisedTrainer(AbstractTrainer):
         image_num = len(self.train_dl.dataset.data)
 
         # for cycle defines an epoch for train set
-        for inputs, labels in self.train_dl:
+        for i, (inputs, labels) in enumerate(self.train_dl, start=1):
             temp_count += len(labels)
             inputs, labels = inputs.to(self.device), labels.to(self.device)
 
@@ -120,9 +125,11 @@ class SupervisedTrainer(AbstractTrainer):
             # loss and accuracy over a single step of training
             temp_loss = loss.item()
             temp_accu = accuracy_score(labels, predictions)
+            it_per_sec = i / (time.time()-init_time)
             self.summary.log_step(partial=temp_count,
                                   total=image_num,
                                   loss=temp_loss,
+                                  it_per_sec=it_per_sec,
                                   accuracy=temp_accu)
 
             # accumulated loss for epoch
@@ -132,8 +139,9 @@ class SupervisedTrainer(AbstractTrainer):
         # accuracy and loss computation for one epoch of training
         train_accuracy /= temp_count
         train_loss /= len(self.train_dl)
+        total_time = time.time() - init_time
 
-        return train_loss, train_accuracy
+        return train_loss, train_accuracy, total_time, it_per_sec
 
     def _set_lr_scheduler(self) -> optim.lr_scheduler:
         """

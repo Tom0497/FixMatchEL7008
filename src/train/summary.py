@@ -57,6 +57,8 @@ class Summary:
                   train_loss: float,
                   val_acc: float,
                   val_loss: float,
+                  epoch_time: float,
+                  iter_time: float,
                   log: bool = True):
         """
         Log and display important metrics from an epoch.
@@ -71,6 +73,10 @@ class Summary:
             accuracy in validation set.
         :param val_loss:
             CE loss in validation set.
+        :param epoch_time:
+            total time for epoch in seconds.
+        :param iter_time:
+            average time per iteration in seconds.
         :param log:
             indicate if values are printed for user.
         """
@@ -82,7 +88,7 @@ class Summary:
 
         if log:
             sys.stdout.write(
-                f'\r[Epoch {epoch}]'
+                f'\r[Epoch {epoch}] {epoch_time:.1f}s ({iter_time:.2f}it/s)'
                 f' train_loss: {train_loss:.4f} |'
                 f' train_accu: {train_acc:.4f} |'
                 f' val_loss: {val_loss:.4f} |'
@@ -94,12 +100,15 @@ class Summary:
                  total: int,
                  loss: float,
                  accuracy: float,
+                 it_per_sec: float,
                  log: bool = True):
         """
         Log and display important metrics from a step or batch.
 
         :param partial:
             number of images already used from training set in current epoch.
+        :param it_per_sec:
+            iterations per second estimation.
         :param total:
             number of images in training set.
         :param loss:
@@ -114,7 +123,7 @@ class Summary:
         self.step_logs['accuracy'].append(accuracy)
 
         if log:
-            sys.stdout.write(f'\r[{partial}/{total}] loss: {loss:.4f} | accu: {accuracy:.4f}')
+            sys.stdout.write(f'\r[{partial}/{total}] ({it_per_sec:.2f}it/s) loss: {loss:.4f} | accu: {accuracy:.4f}')
 
     def log_model(self,
                   epoch: int,
