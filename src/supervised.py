@@ -68,12 +68,12 @@ def main(opt: argparse.Namespace) -> int:
     data_train = DataClass(root_path=data_path,
                            train=True,
                            data_range=train_range,
-                           transform=transform_train,
+                           weak_transform=transform_train,
                            target_transform=target_transform)
     data_val = DataClass(root_path=data_path,
                          train=True,
                          data_range=val_range,
-                         transform=transform_test,
+                         weak_transform=transform_test,
                          target_transform=target_transform)
 
     # training scheme

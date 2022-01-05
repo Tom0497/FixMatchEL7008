@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Tuple, Optional, Callable
+from typing import Tuple, Optional, Callable, Any
 
 import numpy as np
 from torchvision.datasets import CIFAR10
 
 from definitions import DATASETS_DIR
+from PIL import Image
 
 
 class CIFAR10SSL(CIFAR10):
@@ -29,7 +30,8 @@ class CIFAR10SSL(CIFAR10):
                  root_path: str or Path,
                  train: bool,
                  data_range: Tuple[int, int],
-                 transform: Optional[Callable] = None,
+                 weak_transform: Optional[Callable] = None,
+                 strong_transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None):
         """
         Constructor of CIFAR10SSL dataset object.
@@ -45,13 +47,50 @@ class CIFAR10SSL(CIFAR10):
         super(CIFAR10SSL, self).__init__(root=root_path,
                                          train=train,
                                          download=True,
-                                         transform=transform,
                                          target_transform=target_transform)
 
         self.__order_data()
         self.data_range = data_range
         self.__resolve_data_range()
         self.shuffle_data()
+
+        # weak and strong transformations
+        self.weak_transform = weak_transform
+        self.strong_transform = strong_transform
+
+    def __getitem__(self, index: int) -> Tuple[Any, ...]:
+        """
+        Get example from dataset using index.
+
+        :param index:
+            index to search in database.
+
+        :return:
+            Image applying transformations if exists, and label.
+        """
+
+        img, target = self.data[index], self.targets[index]
+
+        img = Image.fromarray(img)
+        weak, strong = None, None
+
+        # img contains weak augmentation
+        if self.weak_transform is not None:
+            weak = self.weak_transform(img)
+        # strong contains strong augmentation
+        if self.strong_transform is not None:
+            strong = self.strong_transform(img)
+
+        # target transform
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        weak = img if not self.weak_transform else weak
+        # if not strong augmentation, usual return
+        if not self.strong_transform:
+            return weak, target
+
+        return weak, strong, target
 
     def shuffle_data(self):
         """

@@ -9,7 +9,7 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, Dataset
 
-from src.train.summary import Summary
+from train.summary.summary import Summary
 
 
 class AbstractTrainer(ABC):
