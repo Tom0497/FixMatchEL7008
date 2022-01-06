@@ -155,17 +155,19 @@ class AbstractTrainer(ABC):
         assert isinstance(optimizer, str), 'optimizer name must be string'
         assert optimizer.lower() in ('adam', 'sgd'), 'only ADAM and SGD supported'
 
+        # weight_decay based on whether data is CIFAR 10 or 100
+        weight_decay = 0.0005 if self.model.n_classes == 10 else 0.001
         if optimizer.lower() == 'adam':
             return optim.Adam(self.model.parameters(),
                               lr=self.lr,
                               betas=(0.9, 0.999),
-                              weight_decay=0.0005)
+                              weight_decay=weight_decay)
 
         return optim.SGD(self.model.parameters(),
                          lr=self.lr,
                          momentum=0.9,
                          nesterov=True,
-                         weight_decay=0.0005)
+                         weight_decay=weight_decay)
 
     @abstractmethod
     def _train_epoch(self):

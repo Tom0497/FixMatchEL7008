@@ -60,7 +60,16 @@ def cosine_decay(steps: int) -> Callable[[int], float]:
     return function
 
 
-def options():
+def options(fixmatch: bool = False):
+    """
+    Controls and parse CLI arguments from user.
+
+    :param fixmatch:
+        activates additional options just for fixmatch.
+
+    :return:
+        NameSpace with user input args.
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-d", "--data",
@@ -100,5 +109,32 @@ def options():
                         nargs=2,
                         type=int,
                         default=[4000, 5000])
+
+    if fixmatch:
+        parser.add_argument("-ulr", "--unlabeled-range",
+                            help="range of images per class for unlabeled data",
+                            nargs=2,
+                            type=int,
+                            default=[0, 4000])
+        parser.add_argument("-tau", "--tau",
+                            help="threshold for retaining a pseudo-label",
+                            type=float,
+                            default=0.95)
+        parser.add_argument("-mu", "--mu",
+                            help="multiplier of batch size for unlabeled data",
+                            type=float,
+                            default=7.)
+        parser.add_argument("--lambda-u",
+                            help="unsupervised loss multiplier lambda",
+                            type=float,
+                            default=1.)
+        parser.add_argument("-N", "--N",
+                            help="number of transformations for RandAugment",
+                            type=int,
+                            default=2)
+        parser.add_argument("-M", "--M",
+                            help="magnitude of transformations in RandAugment",
+                            type=int,
+                            default=9)
 
     return parser.parse_args()

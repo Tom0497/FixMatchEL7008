@@ -69,15 +69,17 @@ class CIFAR10SSL(CIFAR10):
             Image applying transformations if exists, and label.
         """
 
+        # retrieve data based on index
         img, target = self.data[index], self.targets[index]
 
+        # consistency with original implementation
         img = Image.fromarray(img)
         weak, strong = None, None
 
-        # img contains weak augmentation
+        # weak augmentation
         if self.weak_transform is not None:
             weak = self.weak_transform(img)
-        # strong contains strong augmentation
+        # strong augmentation
         if self.strong_transform is not None:
             strong = self.strong_transform(img)
 
@@ -85,7 +87,9 @@ class CIFAR10SSL(CIFAR10):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
+        # if no weak transformation original img is output
         weak = img if not self.weak_transform else weak
+
         # if not strong augmentation, usual return
         if not self.strong_transform:
             return weak, target

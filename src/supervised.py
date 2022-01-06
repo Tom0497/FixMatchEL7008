@@ -29,15 +29,23 @@ def main(opt: argparse.Namespace) -> int:
     used for training. Labels are transformed to one hot encoding.
     """
 
+    # wide resnet width and depth
     model_depth, model_width = opt.model_depth, opt.model_width
+
+    # dataset to use (cifar10 or cifar100)
     dataset = opt.data
+
+    # trainer hyper parameters
     batch_size = opt.batch_size
     epochs = opt.epochs
     patience = opt.early_stopping
     results_folder = opt.results
+
+    # labeled and validation ranges per class
     train_range = tuple(opt.train_range)
     val_range = tuple(opt.val_range)
 
+    # which dataset to use
     if dataset == 'cifar10':
         mean, std = CIFAR10_MEAN, CIFAR10_STD
         n_classes = 10
