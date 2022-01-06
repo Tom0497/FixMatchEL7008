@@ -12,6 +12,21 @@ from src.utils import cosine_decay
 
 
 class FixMatchTrainer(AbstractTrainer):
+    """
+    Classification model semi supervised trainer.
+
+    This class inherits from AbstractTrainer and represents a semi supervised
+    training scheme, i.e. part of the data is labeled but hte major part of it
+    is unlabeled, and to integrate it to the training, FixMatch is implemented.
+
+    At least the _train_epoch abstract method must be implemented, given
+    that this step differentiates a semi supervised training from a fully
+    supervised training.
+
+    Logs are used to register accuracy and loss progression in every
+    epoch of training. Also, the best model is saved using the loss
+    on validation set as the criterion.
+    """
 
     def __init__(self,
                  model: nn.Module,
@@ -27,6 +42,36 @@ class FixMatchTrainer(AbstractTrainer):
                  lambda_u: float,
                  early_stopping: int,
                  device: str):
+        """
+        Constructor of FixMatchTrainer.
+
+        :param model:
+            classification model to be trained.
+        :param epochs:
+            maximum number of steps to train.
+        :param optimizer:
+            optimization method, either ADAM or SGD.
+        :param lr:
+            initial learning rate for optimization method.
+        :param labeled_set:
+            labeled set, instance of torch.utils.data.Dataset.
+        :param unlabeled_set:
+            unlabeled set, instance of torch.utils.data.Dataset.
+        :param val_set:
+            validation set, instance of torch.utils.data.Dataset.
+        :param mu:
+            batch size multiplier in terms of labeled batch size.
+        :param tau:
+            threshold for which a pseudo label is considered valid.
+        :param lambda_u:
+            value that balances between supervised and unsupervised loss.
+        :param batch_size:
+            batch size to use in DataLoader for training set.
+        :param early_stopping:
+            patience in steps for early stopping (0 means no ES).
+        :param device:
+            either cpu or cuda (gpu).
+        """
 
         # mu for FixMatch and batch size for unlabeled data.
         self.mu = mu
@@ -63,12 +108,30 @@ class FixMatchTrainer(AbstractTrainer):
         self.summary.log_hyperparams(hyperparams=self.get_hyperparams())
 
     def _set_lr_scheduler(self):
+        """
+        Protected method - Configures cosine decay for learning rate.
+
+        :return:
+            cosine decay learning rate scheduler.
+        """
+
         max_steps = self.epochs * self.max_steps
 
         return optim.lr_scheduler.LambdaLR(optimizer=self.optimizer,
                                            lr_lambda=cosine_decay(steps=max_steps))
 
     def _train_epoch(self):
+        """
+        Protected method - Perform one epoch of semi supervised training.
+
+        An epoch of semi supervised training consists of iterating through
+        both a labeled and unlabeled batches of data, forward them through
+        the model, and, in this case, under FixMatch scheme compute pseudo
+        labels apply a mask and finally compute an unsupervised loss.
+
+        :return:
+            CE-loss and accuracy computed over training dataset.
+        """
 
         # training stage
         self.model.train()
@@ -148,11 +211,11 @@ class FixMatchTrainer(AbstractTrainer):
             # mask rate computation
             indicator_d = indicator.detach().float()
             over_thresh = torch.sum(indicator_d)
-            mask_rate = over_thresh / n_unlabeled
+            mask_rate = (over_thresh / n_unlabeled).item()
 
             # impurity computation
             indicator_l = labels_un != q_b_hat.detach()
-            impurity = torch.sum(indicator_d * indicator_l) / over_thresh
+            impurity = (torch.sum(indicator_d * indicator_l) / over_thresh).item()
 
             # loss and accuracy over a single step of training
             temp_loss = total_loss.detach().item()
@@ -192,6 +255,11 @@ class FixMatchTrainer(AbstractTrainer):
         return train_loss, train_accuracy, total_time, it_per_sec
 
     def get_hyperparams(self):
+        """
+        :return:
+            Hyper parameters used for training the model.
+        """
+
         hyper_params = {
             'model': str(self.model),
             'n_params': self.model.num_parameters(),
