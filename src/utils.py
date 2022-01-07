@@ -70,6 +70,7 @@ def options(fixmatch: bool = False):
     :return:
         NameSpace with user input args.
     """
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-d", "--data",
